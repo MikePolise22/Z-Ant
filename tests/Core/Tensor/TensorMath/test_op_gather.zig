@@ -30,7 +30,8 @@ test "gather along axis 0" {
     defer indicesTensor.deinit();
 
     // Perform gather along axis 0
-    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, 0);
+    const validAxis: isize = 3;
+    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, validAxis);
     defer gatheredTensor.deinit();
 
     // Expected output tensor: [1,2,3,7,8,9], shape [2,3]
@@ -72,7 +73,8 @@ test "gather along axis 1" {
     defer indicesTensor.deinit();
 
     // Perform gather along axis 1
-    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, 1);
+    const validAxis: isize = 1;
+    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, validAxis);
     defer gatheredTensor.deinit();
 
     // Expected output tensor: [
@@ -123,7 +125,7 @@ test "gather with invalid axis" {
     var indicesTensor = try Tensor(usize).fromArray(&allocator, &indicesArray, &indicesShape);
     defer indicesTensor.deinit();
 
-    const invalidAxis: usize = 3; // Input tensor has 2 dimensions
+    const invalidAxis: isize = 3; // Input tensor has 2 dimensions
     const result = TensMath.gather(u8, &inputTensor, &indicesTensor, invalidAxis);
     try std.testing.expect(result == TensorError.InvalidAxis);
 }
@@ -148,7 +150,8 @@ test "gather - negative axis" {
     defer indicesTensor.deinit();
 
     // Gather along axis -2 (equivalent to axis 0)
-    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, -2);
+    const validAxis: isize = -2;
+    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, validAxis);
     defer gatheredTensor.deinit();
 
     // Expected: [4, 5, 6]
@@ -179,7 +182,8 @@ test "gather - invalid indices" {
     defer indicesTensor.deinit();
 
     // Should return error for out of bounds index
-    try std.testing.expectError(TensorError.IndexOutOfBounds, TensMath.gather(u8, &inputTensor, &indicesTensor, 0));
+    const validAxis: isize = 0;
+    try std.testing.expectError(TensorError.IndexOutOfBounds, TensMath.gather(u8, &inputTensor, &indicesTensor, validAxis));
 }
 
 test "gather - multi-dimensional indices" {
@@ -206,7 +210,8 @@ test "gather - multi-dimensional indices" {
     defer indicesTensor.deinit();
 
     // Gather along axis 0
-    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, 0);
+    const validAxis: isize = 0;
+    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, validAxis);
     defer gatheredTensor.deinit();
 
     // Expected shape: [2, 2, 3]
