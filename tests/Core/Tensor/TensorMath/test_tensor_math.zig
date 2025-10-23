@@ -21,6 +21,7 @@ test {
     _ = @import("test_op_log.zig");
     _ = @import("test_op_mat_mul.zig");
     _ = @import("test_op_mean.zig");
+    _ = @import("test_op_min.zig");
     _ = @import("test_op_neg.zig");
     _ = @import("test_op_pad.zig");
     // _ = @import("test_op_pooling.zig"); Tests are obsolete! The ops are tested into the fuzzing
