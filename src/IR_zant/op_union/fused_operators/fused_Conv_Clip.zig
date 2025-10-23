@@ -72,20 +72,41 @@ pub const Fused_Conv_Clip = struct {
     //DONE
     //TODO controlla allocazioni e defer
     pub fn get_input_tensors(self: Fused_Conv_Clip) ![]*TensorZant {
-        var inputs: std.ArrayList(*TensorZant) = .empty;
-        defer inputs.deinit(allocator);
+        // var inputs: std.ArrayList(*TensorZant) = .empty;
+        // defer inputs.deinit(allocator);
 
-        // conv inputs X, W, (B if exists)
-        const conv_inputs = try self.op_Conv.get_input_tensors();
-        for (conv_inputs) |t| {
-            try inputs.append(allocator, t);
-        }
+        // // conv inputs X, W, (B if exists)
+        // const conv_inputs = try self.op_Conv.get_input_tensors();
+        // for (conv_inputs) |t| {
+        //     try inputs.append(allocator, t);
+        // }
 
-        // clip parameters min, max (if exist)
-        if (self.op_Clip.min) |m| try inputs.append(allocator, m);
-        if (self.op_Clip.max) |M| try inputs.append(allocator, M);
+        // // clip parameters min, max (if exist)
+        // if (self.op_Clip.min) |m| try inputs.append(allocator, m);
+        // if (self.op_Clip.max) |M| try inputs.append(allocator, M);
 
-        return inputs.toOwnedSlice(allocator);
+        // return inputs.toOwnedSlice(allocator);
+        //⚡ Pre-calcola la dimensione totale
+        const conv_input_count: usize = if (self.op_Conv.input_B != null) 3 else 2;
+        const clip_param_count: usize =
+            @as(usize, if (self.op_Clip.min != null) 1 else 0) +
+            @as(usize, if (self.op_Clip.max != null) 1 else 0);
+
+        const total_count = conv_input_count + clip_param_count;
+
+        // ⚡ Singola allocazione con capacità esatta
+        var inputs = try std.ArrayList(*TensorZant).initCapacity(allocator, total_count);
+        errdefer inputs.deinit();
+
+        // ⚡ Aggiungi senza resize (capacity già garantita)
+        inputs.appendAssumeCapacity(self.op_Conv.input_X);
+        inputs.appendAssumeCapacity(self.op_Conv.input_W);
+        if (self.op_Conv.input_B) |b| inputs.appendAssumeCapacity(b);
+
+        if (self.op_Clip.min) |m| inputs.appendAssumeCapacity(m);
+        if (self.op_Clip.max) |M| inputs.appendAssumeCapacity(M);
+
+        return try inputs.toOwnedSlice();
     }
 
     //DONE
@@ -310,16 +331,25 @@ pub const Fused_Conv_Clip = struct {
         // return node_list;
         _ = graph;
 
-        if (root_node.op != .conv or root_node.next.items.len != 1) return null;
+        // ⚡ FAST PATH: Controlla tipo operazione inline (branch predictor friendly)
+        const is_conv = root_node.op == .conv;
+        const has_single_successor = root_node.next.items.len == 1;
+
+        // ⚡ Early exit con singola condizione (compila a singolo branch)
+        if (!is_conv or !has_single_successor) return null;
 
         const clip_node = root_node.next.items[0];
+
+        // ⚡ Secondo check inline
         if (clip_node.op != .clip) return null;
 
-        var node_list: std.ArrayList(*NodeZant) = .empty;
-        errdefer node_list.deinit(allocator);
+        // ✅ Pattern trovato - alloca SOLO ADESSO con capacità esatta
+        var node_list = try std.ArrayList(*NodeZant).initCapacity(allocator, 2);
+        errdefer node_list.deinit();
 
-        try node_list.append(root_node);
-        try node_list.append(clip_node);
+        // ⚡ No resize necessario
+        node_list.appendAssumeCapacity(root_node);
+        node_list.appendAssumeCapacity(clip_node);
 
         return node_list;
     }
