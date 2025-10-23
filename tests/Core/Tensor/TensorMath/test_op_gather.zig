@@ -30,7 +30,7 @@ test "gather along axis 0" {
     defer indicesTensor.deinit();
 
     // Perform gather along axis 0
-    const validAxis: isize = 3;
+    const validAxis: isize = 0;
     var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, validAxis);
     defer gatheredTensor.deinit();
 
