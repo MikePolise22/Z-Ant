@@ -32,6 +32,12 @@ const Borrows = std.ArrayListUnmanaged(struct {
     tensor: *TensorZant,
 });
 
+// Intrusive node wrapper for the work queue
+const CollectionType = struct {
+    node: std.DoublyLinkedList.Node,
+    data: *NodeZant,
+};
+
 /// Compute an associative collection that, given the name of a tensor, returns
 /// a corresponding BackingBuffer that can be safely used to hold the data of
 /// that tensor for the duration indicated in the BackingBuffer
@@ -43,22 +49,28 @@ pub fn computeBackingBuffers(starting_node: *NodeZant, alloc: std.mem.Allocator)
     var epochs = std.AutoArrayHashMap(*NodeZant, usize).init(arena_alloc);
     try epochs.put(starting_node, 1);
 
-    const CollectionType = std.DoublyLinkedList(*NodeZant);
-    var nodes: CollectionType = .{};
-    var first_node = try arena_alloc.create(CollectionType.Node);
-    first_node.data = starting_node;
-    nodes.append(first_node);
+    var nodes: std.DoublyLinkedList = .{};
+    var first_item = try arena_alloc.create(CollectionType);
+    first_item.* = .{
+        .node = .{ .next = null, .prev = null },
+        .data = starting_node,
+    };
+    nodes.append(&first_item.node);
 
     // First pass: compute the epoch of each node
     while (nodes.popFirst()) |node| {
-        defer arena_alloc.destroy(node);
-        const zant_node = node.data;
+        const item = @as(*CollectionType, @fieldParentPtr("node", node));
+        defer arena_alloc.destroy(item);
+        const node_zant = item.data;
 
-        const epoch = epochs.get(zant_node).?;
+        const epoch = epochs.get(node_zant).?;
 
-        for (zant_node.next.items) |next_zant_node| {
-            var next_node = try arena_alloc.create(CollectionType.Node);
-            next_node.data = next_zant_node;
+        for (node_zant.next.items) |next_node_zant| {
+            var next_item = try arena_alloc.create(CollectionType);
+            next_item.* = .{
+                .node = .{ .next = null, .prev = null },
+                .data = next_node_zant,
+            };
 
             // A node may be visited more than once (e.g. two nodes pointing to
             // the same node)
@@ -67,14 +79,14 @@ pub fn computeBackingBuffers(starting_node: *NodeZant, alloc: std.mem.Allocator)
             // If we already visited that node with a parent with an earlier
             // epoch, we update to a later one (epoch of a node = max(epochs of
             // the parents) + 1)
-            const new_epoch = try epochs.getOrPut(next_zant_node);
+            const new_epoch = try epochs.getOrPut(next_node_zant);
             if (!new_epoch.found_existing or new_epoch.value_ptr.* < epoch + 1) {
                 new_epoch.value_ptr.* = epoch + 1;
             }
 
             // Nodes may be added multiple times to the list (e.g. joins), but
             // only a finite number of times (i.e. no infinite loop)
-            nodes.append(next_node);
+            nodes.append(&next_item.node);
         }
     }
 

@@ -47,27 +47,9 @@
 | mobilenet_v2| 8363        | 12163            | 1,445,338          | 1,445,338           |
 
 # TFL (time us)
-| Model      |   TFL    |   EI    |
-|------------|----------|---------|
-| beer       | | |
-| mnist-8    |  | 197000 us | 
+| Model       |   TFL    |   EI    |
+|-------------|----------|---------|
+| beer        | | |
+| mnist-8     |         | 197000 us | 
 | mobilenet_v2|         | 304000 us, 282.8K RAM, 6.9M Flash |
-
-## Key Insights
-
-### Best Performance (ReleaseFast):
-- **Fastest execution**: mnist-8 (402ms)
-- **Lowest memory**: mnist-8 (50.24 KB)
-- **Smallest executable**: fomo8 (1.2M)
-- **Most efficient allocations**: fomo8 (17 allocs)
-
-### Best Optimization (ReleaseSmall Benefits):
-- **Largest size reduction**: mnist-8 (96% reduction)
-- **Execution improvement**: coco80_q (-7.4% faster)
-- **Best overall trade-off**: fomo8 (85% size reduction, minimal performance impact)
-
-### Model Characteristics:
-- **Quantized models** (new2, coco80_q): High instruction counts, identical allocation patterns
-- **Lightweight models** (fomo8, mnist-8): Minimal allocations, excellent size reductions
-- **Large models** (darknet_s, mobilenet_v2): Moderate optimization benefits, stable memory profiles
 

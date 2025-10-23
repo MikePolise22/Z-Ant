@@ -103,7 +103,15 @@ pub fn codegnenerateFromGraphZant(model_name: []const u8, generated_path: []cons
                 .backing_buffer = entry.value_ptr.*,
             };
         }
-        std.debug.print("\n{}\n", .{std.json.fmt(tensors, .{})});
+
+        var json_writer: std.Io.Writer.Allocating = .init(allocator);
+        defer json_writer.deinit();
+        const tensors_json = std.json.fmt(tensors, .{});
+        try tensors_json.format(&json_writer.writer);
+        const json_str = try json_writer.toOwnedSlice();
+        defer allocator.free(json_str);
+
+        std.debug.print("\n{s}\n", .{json_str});
         std.debug.print("\n", .{});
     }
 
