@@ -12,6 +12,7 @@ test {
     _ = @import("test_op_concatenate.zig");
     // _ = @import("test_op_convolution.zig"); Tests are obsolete! The ops are tested into the fuzzing
     _ = @import("test_op_convolution_stm32n6.zig");
+    _ = @import("test_op_conv_clip.zig");
     _ = @import("test_op_flatten.zig");
     _ = @import("test_op_gather.zig");
     _ = @import("test_op_gelu.zig");
