@@ -8,74 +8,72 @@ const TensorMathError = zant.utils.error_handler.TensorMathError;
 
 const tests_log = std.log.scoped(.test_lib_shape);
 
-test "gather along axis 0 and axis 1" {
+test "gather along axis 0" {
     const allocator = pkgAllocator.allocator;
 
-    // -------------------------------------------------------------------------------------
-    // Test Case 1: Gather Along Axis 0
-    // -------------------------------------------------------------------------------------
     tests_log.info("\n     test: gather along axis 0", .{});
 
     // Initialize input tensor: 3x3 matrix
-    var inputArray0: [3][3]u8 = [_][3]u8{
+    var inputArray: [3][3]u8 = [_][3]u8{
         [_]u8{ 1, 2, 3 },
         [_]u8{ 4, 5, 6 },
         [_]u8{ 7, 8, 9 },
     };
-    var inputShape0: [2]usize = [_]usize{ 3, 3 };
-    var inputTensor0 = try Tensor(u8).fromArray(&allocator, &inputArray0, &inputShape0);
-    defer inputTensor0.deinit();
+    var inputShape: [2]usize = [_]usize{ 3, 3 };
+    var inputTensor = try Tensor(u8).fromArray(&allocator, &inputArray, &inputShape);
+    defer inputTensor.deinit();
 
     // Initialize indices tensor: [0, 2]
-    var indicesArray0: [2]usize = [_]usize{ 0, 2 };
-    var indicesShape0: [1]usize = [_]usize{2};
-    var indicesTensor0 = try Tensor(usize).fromArray(&allocator, &indicesArray0, &indicesShape0);
-    defer indicesTensor0.deinit();
+    var indicesArray: [2]usize = [_]usize{ 0, 2 };
+    var indicesShape: [1]usize = [_]usize{2};
+    var indicesTensor = try Tensor(usize).fromArray(&allocator, &indicesArray, &indicesShape);
+    defer indicesTensor.deinit();
 
     // Perform gather along axis 0
-    var gatheredTensor0 = try TensMath.gather(u8, &inputTensor0, &indicesTensor0, 0);
-    defer gatheredTensor0.deinit();
+    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, 0);
+    defer gatheredTensor.deinit();
 
     // Expected output tensor: [1,2,3,7,8,9], shape [2,3]
-    const expectedData0: [6]u8 = [_]u8{ 1, 2, 3, 7, 8, 9 };
-    const expectedShape0: [2]usize = [_]usize{ 2, 3 };
+    const expectedData: [6]u8 = [_]u8{ 1, 2, 3, 7, 8, 9 };
+    const expectedShape: [2]usize = [_]usize{ 2, 3 };
 
     // Check shape
-    try std.testing.expect(gatheredTensor0.shape.len == expectedShape0.len);
-    for (0..expectedShape0.len) |i| {
-        try std.testing.expect(gatheredTensor0.shape[i] == expectedShape0[i]);
+    try std.testing.expect(gatheredTensor.shape.len == expectedShape.len);
+    for (0..expectedShape.len) |i| {
+        try std.testing.expect(gatheredTensor.shape[i] == expectedShape[i]);
     }
 
     // Check data
-    try std.testing.expect(gatheredTensor0.size == 6);
-    for (0..gatheredTensor0.size) |i| {
-        try std.testing.expect(gatheredTensor0.data[i] == expectedData0[i]);
+    try std.testing.expect(gatheredTensor.size == 6);
+    for (0..gatheredTensor.size) |i| {
+        try std.testing.expect(gatheredTensor.data[i] == expectedData[i]);
     }
+}
 
-    // -------------------------------------------------------------------------------------
-    // Test Case 2: Gather Along Axis 1
-    // -------------------------------------------------------------------------------------
+test "gather along axis 1" {
+    const allocator = pkgAllocator.allocator;
+
     tests_log.info("\n     test: gather along axis 1", .{});
 
-    var inputArray1: [2][4]u8 = [_][4]u8{
+    var inputArray: [2][4]u8 = [_][4]u8{
         [_]u8{ 10, 20, 30, 40 },
         [_]u8{ 50, 60, 70, 80 },
     };
-    var inputShape1: [2]usize = [_]usize{ 2, 4 };
-    var inputTensor1 = try Tensor(u8).fromArray(&allocator, &inputArray1, &inputShape1);
-    defer inputTensor1.deinit();
+    var inputShape: [2]usize = [_]usize{ 2, 4 };
+    var inputTensor = try Tensor(u8).fromArray(&allocator, &inputArray, &inputShape);
+    defer inputTensor.deinit();
 
-    var indicesArray1: [2][2]usize = [_][2]usize{
+    var indicesArray: [2][2]usize = [_][2]usize{
         [_]usize{ 1, 3 },
         [_]usize{ 0, 2 },
     };
-    var indicesShape1: [2]usize = [_]usize{ 2, 2 };
-    var indicesTensor1 = try Tensor(usize).fromArray(&allocator, &indicesArray1, &indicesShape1);
-    defer indicesTensor1.deinit();
+    var indicesShape: [2]usize = [_]usize{ 2, 2 };
+    var indicesTensor = try Tensor(usize).fromArray(&allocator, &indicesArray, &indicesShape);
+    defer indicesTensor.deinit();
 
     // Perform gather along axis 1
-    var gatheredTensor1 = try TensMath.gather(u8, &inputTensor1, &indicesTensor1, 1);
-    defer gatheredTensor1.deinit();
+    var gatheredTensor = try TensMath.gather(u8, &inputTensor, &indicesTensor, 1);
+    defer gatheredTensor.deinit();
 
     // Expected output tensor: [
     //   [20, 40],
@@ -83,33 +81,51 @@ test "gather along axis 0 and axis 1" {
     //   [60, 80],
     //   [50, 70]
     // ], shape [2, 2, 2]
-    const expectedData1: [8]u8 = [_]u8{ 20, 40, 10, 30, 60, 80, 50, 70 };
-    const expectedShape1: [3]usize = [_]usize{ 2, 2, 2 };
+    const expectedData: [8]u8 = [_]u8{ 20, 40, 10, 30, 60, 80, 50, 70 };
+    const expectedShape: [3]usize = [_]usize{ 2, 2, 2 };
 
     // Check shape
-    try std.testing.expect(gatheredTensor1.shape.len == expectedShape1.len);
-    for (0..expectedShape1.len) |i| {
-        try std.testing.expect(gatheredTensor1.shape[i] == expectedShape1[i]);
+    try std.testing.expect(gatheredTensor.shape.len == expectedShape.len);
+    for (0..expectedShape.len) |i| {
+        try std.testing.expect(gatheredTensor.shape[i] == expectedShape[i]);
     }
 
     // Check data
-    tests_log.debug("\n     gatheredTensor1.size: {}\n", .{gatheredTensor1.size});
-    gatheredTensor1.print();
+    tests_log.debug("\n     gatheredTensor.size: {}\n", .{gatheredTensor.size});
+    gatheredTensor.print();
 
-    try std.testing.expect(gatheredTensor1.size == 8);
-    for (0..gatheredTensor1.size) |i| {
-        tests_log.debug("\n     gatheredTensor1.data[i]: {}\n", .{expectedData1[i]});
-        tests_log.debug("\n     expectedData1[i]: {}\n", .{gatheredTensor1.data[i]});
-        try std.testing.expect(gatheredTensor1.data[i] == expectedData1[i]);
+    try std.testing.expect(gatheredTensor.size == 8);
+    for (0..gatheredTensor.size) |i| {
+        tests_log.debug("\n     gatheredTensor.data[i]: {}\n", .{expectedData[i]});
+        tests_log.debug("\n     expectedData[i]: {}\n", .{gatheredTensor.data[i]});
+        try std.testing.expect(gatheredTensor.data[i] == expectedData[i]);
     }
+}
 
-    // -------------------------------------------------------------------------------------
-    // Test Case 3: Error Handling - Invalid Axis
-    // -------------------------------------------------------------------------------------
+test "gather with invalid axis" {
+    const allocator = pkgAllocator.allocator;
+
     tests_log.info("\n     test: gather with invalid axis", .{});
+
+    // Initialize input tensor: 3x3 matrix
+    var inputArray: [3][3]u8 = [_][3]u8{
+        [_]u8{ 1, 2, 3 },
+        [_]u8{ 4, 5, 6 },
+        [_]u8{ 7, 8, 9 },
+    };
+    var inputShape: [2]usize = [_]usize{ 3, 3 };
+    var inputTensor = try Tensor(u8).fromArray(&allocator, &inputArray, &inputShape);
+    defer inputTensor.deinit();
+
+    // Initialize indices tensor: [0, 2]
+    var indicesArray: [2]usize = [_]usize{ 0, 2 };
+    var indicesShape: [1]usize = [_]usize{2};
+    var indicesTensor = try Tensor(usize).fromArray(&allocator, &indicesArray, &indicesShape);
+    defer indicesTensor.deinit();
+
     const invalidAxis: usize = 3; // Input tensor has 2 dimensions
-    const result0 = TensMath.gather(u8, &inputTensor0, &indicesTensor0, invalidAxis);
-    try std.testing.expect(result0 == TensorError.InvalidAxis);
+    const result = TensMath.gather(u8, &inputTensor, &indicesTensor, invalidAxis);
+    try std.testing.expect(result == TensorError.InvalidAxis);
 }
 
 test "gather - negative axis" {
