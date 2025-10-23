@@ -78,12 +78,12 @@ pub const Fused_Conv_Clip = struct {
         // conv inputs X, W, (B if exists)
         const conv_inputs = try self.op_Conv.get_input_tensors();
         for (conv_inputs) |t| {
-            try inputs.append(t);
+            try inputs.append(allocator, t);
         }
 
         // clip parameters min, max (if exist)
-        if (self.op_Clip.min) |m| try inputs.append(m);
-        if (self.op_Clip.max) |M| try inputs.append(M);
+        if (self.op_Clip.min) |m| try inputs.append(allocator, m);
+        if (self.op_Clip.max) |M| try inputs.append(allocator, M);
 
         return inputs.toOwnedSlice(allocator);
     }
