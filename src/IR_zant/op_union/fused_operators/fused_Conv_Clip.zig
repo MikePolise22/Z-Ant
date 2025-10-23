@@ -279,33 +279,47 @@ pub const Fused_Conv_Clip = struct {
     // --- Fusion --
     /// Pattern detection function for Conv -> Clip
     pub fn fn_pattern_detection(graph: *GraphZant, root_node: *NodeZant) anyerror!?std.ArrayList(*NodeZant) {
-        _ = graph; // Not used in this sequential pattern
+        // _ = graph; // Not used in this sequential pattern
 
-        // Only start detection from DequantizeLinear nodes
-        if (root_node.op != .conv) {
-            return null;
-        }
+        // // Only start detection from DequantizeLinear nodes
+        // if (root_node.op != .conv) {
+        //     return null;
+        // }
+
+        // var node_list: std.ArrayList(*NodeZant) = .empty;
+        // errdefer node_list.deinit(allocator);
+
+        // try node_list.append(allocator, root_node);
+
+        // // Check DequantizeLinear -> Pad
+        // if (root_node.next.items.len != 1) {
+        //     node_list.deinit(allocator);
+        //     return null;
+        // }
+
+        // const pad_node = root_node.next.items[0];
+        // if (pad_node.op != .clip) {
+        //     node_list.deinit(allocator);
+        //     return null;
+        // }
+
+        // try node_list.append(allocator, pad_node);
+
+        // std.debug.print(" -> Found complete Conv->Clip pattern!", .{});
+
+        // return node_list;
+        _ = graph;
+
+        if (root_node.op != .conv or root_node.next.items.len != 1) return null;
+
+        const clip_node = root_node.next.items[0];
+        if (clip_node.op != .clip) return null;
 
         var node_list: std.ArrayList(*NodeZant) = .empty;
         errdefer node_list.deinit(allocator);
 
-        try node_list.append(allocator, root_node);
-
-        // Check DequantizeLinear -> Pad
-        if (root_node.next.items.len != 1) {
-            node_list.deinit(allocator);
-            return null;
-        }
-
-        const pad_node = root_node.next.items[0];
-        if (pad_node.op != .clip) {
-            node_list.deinit(allocator);
-            return null;
-        }
-
-        try node_list.append(allocator, pad_node);
-
-        std.debug.print(" -> Found complete Conv->Clip pattern!", .{});
+        try node_list.append(root_node);
+        try node_list.append(clip_node);
 
         return node_list;
     }
