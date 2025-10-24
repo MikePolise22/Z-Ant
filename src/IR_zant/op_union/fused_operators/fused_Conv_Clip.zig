@@ -35,17 +35,18 @@ pub const Fused_Conv_Clip = struct {
     op_Conv: operators.Conv,
     op_Clip: operators.Clip,
 
-    // ⚡ CACHE: Tensori acceduti più frequentemente
-    input_X: *TensorZant, // Cache di op_Conv.input_X (6+ accessi)
-    output_Y: *TensorZant, // Cache di op_Clip.output (7+ accessi)
+    //DONE
+    //local access to high used tensors
+    input_X: *TensorZant,
+    output_Y: *TensorZant,
 
     pub fn init_fused_op(fusion_list: std.ArrayList(*NodeZant)) !Fused_Conv_Clip {
-        // Ensure correct operations are given
+        //ensure correct operations are given
         if (fusion_list.items.len != 2) return error.WrongNumberOfElements;
         if (fusion_list.items[0].op != .conv) return error.WrongOpAtPose0;
-        if (fusion_list.items[1].op != .clip) return error.WrongOpAtPose1;
+        if (fusion_list.items[1].op != .clip) return error.WrongOpAtPose2;
 
-        // Extract the specific operations from the unions
+        // Extract the specific operations from the unionsnono
         const conv_op = switch (fusion_list.items[0].op) {
             .conv => |c| c,
             else => return error.InvalidConvOperation,
@@ -56,123 +57,101 @@ pub const Fused_Conv_Clip = struct {
             else => return error.InvalidClipOperation,
         };
 
-        // Downgrade LINK tensors between fused nodes to FUSED_LINK tensors
+        // Downgrade LINK tensors between fudes noted to FUSED_LINK tensors
         conv_op.output_Y.set_tensorCategory(TensorCategory.FUSED_LINK);
 
-        // ⚡ CACHE: Inizializza i tensori più acceduti
         return Fused_Conv_Clip{
             .op_name = try NodeZant_lib.getFusedOpsName(fusion_list),
             .op_Conv = conv_op,
             .op_Clip = clip_op,
-            .input_X = conv_op.input_X, // ✅ Cache input
-            .output_Y = clip_op.output, // ✅ Cache output
         };
     }
 
+    //DONE
+    //TODO  check  again
     pub fn get_output_shape(self: Fused_Conv_Clip) []usize {
-        // ⚡ Usa cache invece di self.op_Clip.output
-        return self.output_Y.getShape();
+        return self.op_Clip.get_output_shape();
     }
 
+    //DONE
     pub fn get_input_tensors(self: Fused_Conv_Clip) ![]*TensorZant {
-        // ⚡ Cache dei tensori opzionali per evitare accessi multipli
-        const conv_bias = self.op_Conv.input_B;
-        const clip_min = self.op_Clip.min;
-        const clip_max = self.op_Clip.max;
-
-        // Pre-calcolo count ottimizzato
-        const count = 2 +
-            @intFromBool(conv_bias != null) +
-            @intFromBool(clip_min != null) +
-            @intFromBool(clip_max != null);
+        //evaluating inputs len
+        const count = 2 + // X, W sempre presenti
+            (if (self.op_Conv.input_B != null) @as(usize, 1) else 0) +
+            (if (self.op_Clip.min != null) @as(usize, 1) else 0) +
+            (if (self.op_Clip.max != null) @as(usize, 1) else 0);
 
         var inputs = try allocator.alloc(*TensorZant, count);
         errdefer allocator.free(inputs);
-
         var idx: usize = 0;
 
-        // ⚡ Usa cache invece di self.op_Conv.input_X
-        inputs[idx] = self.input_X;
+        inputs[idx] = self.op_Conv.input_X;
         idx += 1;
         inputs[idx] = self.op_Conv.input_W;
         idx += 1;
-
-        if (conv_bias) |b| {
+        if (self.op_Conv.input_B) |b| {
             inputs[idx] = b;
             idx += 1;
         }
-        if (clip_min) |m| {
+        if (self.op_Clip.min) |m| {
             inputs[idx] = m;
             idx += 1;
         }
-        if (clip_max) |M| {
+        if (self.op_Clip.max) |M| {
             inputs[idx] = M;
+            idx += 1;
         }
 
         return inputs;
     }
 
+    //DONE
     pub fn get_output_tensors(self: Fused_Conv_Clip) ![]*TensorZant {
-        // ⚡ Usa cache invece di chiamare op_Clip.get_output_tensors()
-        var outputs = try allocator.alloc(*TensorZant, 1);
-        outputs[0] = self.output_Y;
-        return outputs;
+        return self.op_Clip.get_output_tensors();
     }
 
     pub fn write_op(self: Fused_Conv_Clip, writer: anytype) !void {
-        // ⚡ CACHE LOCAL: Tensori acceduti più volte in questa funzione
-        const conv_kernel = self.op_Conv.input_W; // 8 accessi
-        const conv_bias = self.op_Conv.input_B; // 5 accessi
-        const clip_min = self.op_Clip.min; // 4 accessi
-        const clip_max = self.op_Clip.max; // 4 accessi
-
-        // ⚡ CACHE: Nomi sanitizzati (chiamati più volte)
-        const sanitized_input_name = try utils.getSanitizedName(self.input_X.name);
-        const sanitized_kernel_name = try utils.getSanitizedName(conv_kernel.name);
-        const sanitized_output_name = try utils.getSanitizedName(self.output_Y.name);
-        const sanitized_bias_name = if (conv_bias) |b|
+        // local name
+        const sanitized_input_name = try utils.getSanitizedName(self.op_Conv.input_X.name);
+        const sanitized_kernel_name = try utils.getSanitizedName(self.op_Conv.input_W.name);
+        const sanitized_output_name = try utils.getSanitizedName(self.op_Clip.output.name);
+        const sanitized_bias_name = if (self.op_Conv.input_B) |b|
             try utils.getSanitizedName(b.name)
         else
             null;
 
-        // ⚡ CACHE: TensorCategory checks (evita accessi ripetuti)
-        const input_is_init = self.input_X.tc == TensorCategory.INITIALIZER;
-        const kernel_is_init = conv_kernel.tc == TensorCategory.INITIALIZER;
-
-        // Build tensor reference strings
-        const tensor_X_string = if (input_is_init)
+        // use local name cache
+        const tensor_X_string = if (self.op_Conv.input_X.tc == TensorCategory.INITIALIZER)
             try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_input_name})
         else
             try std.fmt.allocPrint(allocator, "@constCast(&tensor_{s})", .{sanitized_input_name});
         defer allocator.free(tensor_X_string);
 
-        const tensor_W_string = if (kernel_is_init)
+        const tensor_W_string = if (self.op_Conv.input_W.tc == TensorCategory.INITIALIZER)
             try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_kernel_name})
         else
             try std.fmt.allocPrint(allocator, "@constCast(&tensor_{s})", .{sanitized_kernel_name});
         defer allocator.free(tensor_W_string);
 
-        const bias_string = if (conv_bias) |_|
+        const bias_string = if (self.op_Conv.input_B) |_|
             try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_bias_name.?})
         else
             try allocator.dupe(u8, "null");
         defer allocator.free(bias_string);
 
-        // ⚡ CACHE: Type strings (evita chiamate ripetute a toString())
-        const target_type = self.output_Y.ty.toString();
-        const kernel_type = conv_kernel.ty.toString();
-        const need_kernel_cast = !std.mem.eql(u8, kernel_type, target_type);
-        const need_bias_cast = if (conv_bias) |bias|
+        // casting conditions
+        const target_type = self.op_Clip.output.ty.toString();
+        const need_kernel_cast = !std.mem.eql(u8, self.op_Conv.input_W.ty.toString(), target_type);
+        const need_bias_cast = if (self.op_Conv.input_B) |bias|
             !std.mem.eql(u8, bias.ty.toString(), target_type)
         else
             false;
 
-        // Stride string
+        // stride string
         if (self.op_Conv.strides == null) return error.StrideNotFound;
         const stride_string = try utils.i64SliceToUsizeArrayString(self.op_Conv.strides.?);
-        defer allocator.free(stride_string);
 
-        // Pads string
+        // pads string
         const pads_string = if (self.op_Conv.pads) |p| blk: {
             if (p.len > 0) {
                 break :blk try utils.i64SliceToUsizeArrayString(p);
@@ -180,8 +159,6 @@ pub const Fused_Conv_Clip = struct {
                 break :blk "&[_]usize{}";
             }
         } else "null";
-        defer if (!std.mem.eql(u8, pads_string, "null") and !std.mem.eql(u8, pads_string, "&[_]usize{}"))
-            allocator.free(@constCast(pads_string));
 
         // Dilations string
         const dilat_string = if (self.op_Conv.dilations) |d| blk: {
@@ -191,11 +168,9 @@ pub const Fused_Conv_Clip = struct {
                 break :blk "&[_]usize{1} ** 2";
             }
         } else "null";
-        defer if (!std.mem.eql(u8, dilat_string, "null") and !std.mem.eql(u8, dilat_string, "&[_]usize{1} ** 2"))
-            allocator.free(@constCast(dilat_string));
 
-        // ⚡ Usa variabili cached invece di self.op_Clip.min/max
-        const min_string = if (clip_min) |min_tensor|
+        // Clip bounds - RIUSA sanitized_output_name
+        const min_string = if (self.op_Clip.min) |min_tensor|
             if (min_tensor.tc == TensorCategory.INITIALIZER)
                 try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{try utils.getSanitizedName(min_tensor.name)})
             else
@@ -204,7 +179,7 @@ pub const Fused_Conv_Clip = struct {
             "null";
         defer if (!std.mem.eql(u8, min_string, "null")) allocator.free(@constCast(min_string));
 
-        const max_string = if (clip_max) |max_tensor|
+        const max_string = if (self.op_Clip.max) |max_tensor|
             if (max_tensor.tc == TensorCategory.INITIALIZER)
                 try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{try utils.getSanitizedName(max_tensor.name)})
             else
@@ -222,47 +197,33 @@ pub const Fused_Conv_Clip = struct {
         defer if (need_free_bias) allocator.free(@constCast(final_bias_string));
 
         if (need_kernel_cast) {
-            // ✅ FIX: Usa kernel_is_init cached
-            const kernel_source = if (kernel_is_init) "param_lib." else "";
-
-            final_kernel_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_W_casted_{s}", .{ sanitized_kernel_name, sanitized_output_name });
+            final_kernel_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_W_casted_{s}", .{ sanitized_kernel_name, sanitized_output_name } // RIUSA!
+            );
             need_free_kernel = true;
 
             _ = try writer.print(
-                \\    var tensor_{s}_W_casted_{s} = Tensor({s}).fromShape(&allocator, &{s}tensor_{s}.shape) catch return -2;
-                \\    tensMath.cast_lean({s}, &{s}tensor_{s}, &tensor_{s}_W_casted_{s}) catch return -1;
+                \\    var tensor_{s}_W_casted_{s} = Tensor({s}).fromShape(&allocator, &param_lib.tensor_{s}.shape) catch return -2;
+                \\    tensMath.cast_lean({s}, &param_lib.tensor_{s}, &tensor_{s}_W_casted_{s}) catch return -1;
                 \\
             , .{
+                sanitized_kernel_name, sanitized_output_name,              target_type,
+                sanitized_kernel_name, self.op_Conv.input_W.ty.toString(), sanitized_kernel_name,
                 sanitized_kernel_name, sanitized_output_name,
-                target_type,           kernel_source,
-                sanitized_kernel_name,
-                kernel_type, // ✅ Usa kernel_type cached
-                kernel_source,
-                sanitized_kernel_name,
-                sanitized_kernel_name,
-                sanitized_output_name,
             });
         }
 
-        if (need_bias_cast and conv_bias != null) {
-            // ✅ FIX: Determina source dinamicamente
-            const bias_source = if (conv_bias.?.tc == TensorCategory.INITIALIZER)
-                "param_lib."
-            else
-                "";
-
-            final_bias_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_B_casted_{s}", .{ sanitized_bias_name.?, sanitized_output_name });
+        if (need_bias_cast and self.op_Conv.input_B != null) {
+            final_bias_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_B_casted_{s}", .{ sanitized_bias_name.?, sanitized_output_name } // RIUSA!
+            );
             need_free_bias = true;
 
             _ = try writer.print(
-                \\    var tensor_{s}_B_casted_{s} = Tensor({s}).fromShape(&allocator, &{s}tensor_{s}.shape) catch return -2;
-                \\    tensMath.cast_lean({s}, &{s}tensor_{s}, &tensor_{s}_B_casted_{s}) catch return -1;
+                \\    var tensor_{s}_B_casted_{s} = Tensor({s}).fromShape(&allocator, &param_lib.tensor_{s}.shape) catch return -2;
+                \\    tensMath.cast_lean({s}, &param_lib.tensor_{s}, &tensor_{s}_B_casted_{s}) catch return -1;
                 \\
             , .{
-                sanitized_bias_name.?, sanitized_output_name,
-                target_type,           bias_source,
-                sanitized_bias_name.?, conv_bias.?.ty.toString(),
-                bias_source,           sanitized_bias_name.?,
+                sanitized_bias_name.?, sanitized_output_name,                target_type,
+                sanitized_bias_name.?, self.op_Conv.input_B.?.ty.toString(), sanitized_bias_name.?,
                 sanitized_bias_name.?, sanitized_output_name,
             });
         }
@@ -303,20 +264,22 @@ pub const Fused_Conv_Clip = struct {
         });
     }
 
+    //DONE
     pub fn compute_output_shape(self: Fused_Conv_Clip) []usize {
-        // ⚡ Usa cache output_Y
-        return self.output_Y.shape;
+        return self.op_Clip.compute_output_shape();
     }
 
+    //DONE
     pub fn print(self: Fused_Conv_Clip) void {
         std.debug.print("\n Fused_Conv_Clip:\n {any}", .{self});
     }
 
+    //DONE
+    //if there are problems check the conv.sobtitute_tensors, it changes also the output that here is not considered
     pub fn sobstitute_tensors(self: *Fused_Conv_Clip, old_tensor: *TensorZant, new_tensor: *TensorZant) !void {
-        // ⚡ IMPORTANTE: Aggiorna ANCHE le cache!
+        // Accesso diretto invece di try/catch nidificati
         if (self.op_Conv.input_X == old_tensor) {
             self.op_Conv.input_X = new_tensor;
-            self.input_X = new_tensor; // ✅ Sincronizza cache
             return;
         }
         if (self.op_Conv.input_W == old_tensor) {
@@ -343,47 +306,57 @@ pub const Fused_Conv_Clip = struct {
         }
         if (self.op_Clip.output == old_tensor) {
             self.op_Clip.output = new_tensor;
-            self.output_Y = new_tensor; // ✅ Sincronizza cache
             return;
         }
 
         return error.OldTensorNotFoundInSubstitution;
     }
 
-    // --- Fusion ---
+    // --- Fusion --
+    /// Pattern detection function for Conv -> Clip
     pub fn fn_pattern_detection(graph: *GraphZant, root_node: *NodeZant) anyerror!?std.ArrayList(*NodeZant) {
-        _ = graph;
+        _ = graph; // Not used in this sequential pattern
 
-        // ⚡ OPTIMIZATION: Inline checks (branch predictor friendly)
-        const is_conv = root_node.op == .conv;
-        const has_single_successor = root_node.next.items.len == 1;
+        // Only start detection from DequantizeLinear nodes
+        if (root_node.op != .conv) {
+            return null;
+        }
 
-        if (!is_conv or !has_single_successor) return null;
+        var node_list: std.ArrayList(*NodeZant) = .empty;
+        errdefer node_list.deinit(allocator);
 
-        const clip_node = root_node.next.items[0];
-        if (clip_node.op != .clip) return null;
+        try node_list.append(allocator, root_node);
 
-        // ⚡ Alloca SOLO dopo tutti i check
-        var node_list = try std.ArrayList(*NodeZant).initCapacity(allocator, 2);
-        errdefer node_list.deinit();
+        if (root_node.next.items.len != 1) {
+            node_list.deinit(allocator);
+            return null;
+        }
 
-        node_list.appendAssumeCapacity(root_node);
-        node_list.appendAssumeCapacity(clip_node);
+        const pad_node = root_node.next.items[0];
+        if (pad_node.op != .clip) {
+            node_list.deinit(allocator);
+            return null;
+        }
+
+        try node_list.append(allocator, pad_node);
 
         std.debug.print(" -> Found complete Conv->Clip pattern!", .{});
 
         return node_list;
     }
 
+    /// Pattern fusion function
     pub fn fn_pattern_fusion(graph: *GraphZant, node_list: std.ArrayList(*NodeZant)) anyerror!NodeZant {
-        _ = graph;
+        _ = graph; // Not used in this sequential pattern
 
+        // Validate the pattern
         if (node_list.items.len != 2) return error.InvalidNumberOfOps;
         if (node_list.items[0].op != .conv) return error.UnexpectedOpAtPos0;
         if (node_list.items[1].op != .clip) return error.UnexpectedOpAtPos1;
 
-        const last_node = node_list.items[1];
+        const last_node = node_list.items[1]; // Clip
 
+        // Clone the next list instead of direct reference
         var cloned_next: std.ArrayList(*NodeZant) = .empty;
         for (last_node.next.items) |next_node| {
             try cloned_next.append(allocator, next_node);
@@ -400,14 +373,18 @@ pub const Fused_Conv_Clip = struct {
         };
     }
 
+    /// Pattern substitution function
     pub fn fn_pattern_sobstitution(graph: *GraphZant, fused_node: *NodeZant, node_list: std.ArrayList(*NodeZant)) anyerror!void {
+        // Validate inputs
         if (node_list.items.len != 2) return error.InvalidPatternLength;
 
-        const first_node = node_list.items[0];
-        const last_node = node_list.items[1];
+        const first_node = node_list.items[0]; // DequantizeLinear node
+        const last_node = node_list.items[1]; // QLinearConv node
 
+        // Step 1: Find all predecessor nodes that point to the first node
         const predecessors = try graph.get_predecessors(first_node);
 
+        // Step 2: Update predecessor nodes to point to fused_node
         for (predecessors.items) |predecessor| {
             for (predecessor.next.items, 0..) |next_node, i| {
                 if (next_node == first_node) {
@@ -416,16 +393,21 @@ pub const Fused_Conv_Clip = struct {
             }
         }
 
+        // Step 3: Set up fused node's successors
         if (fused_node.next.items.len == 0) {
             for (last_node.next.items) |successor| {
                 try fused_node.next.append(allocator, successor);
             }
         }
 
+        // Step 4: Remove old nodes from graph
         try graph.removeNodes(node_list);
+
+        // Step 5: Add fused node to graph
         try graph.nodes.append(allocator, fused_node);
     }
 };
+
 // ---OLD VERSION BELOW IF NEEDED---
 
 // const std = @import("std");
