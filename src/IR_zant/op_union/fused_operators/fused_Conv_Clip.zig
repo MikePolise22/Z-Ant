@@ -320,15 +320,14 @@ pub const Fused_Conv_Clip = struct {
             return null;
         }
 
+        if (root_node.next.items.len != 1) {
+            return null;
+        }
+
         var node_list: std.ArrayList(*NodeZant) = .empty;
         errdefer node_list.deinit(allocator);
 
         try node_list.append(allocator, root_node);
-
-        if (root_node.next.items.len != 1) {
-            node_list.deinit(allocator);
-            return null;
-        }
 
         const pad_node = root_node.next.items[0];
         if (pad_node.op != .clip) {
