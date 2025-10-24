@@ -282,7 +282,7 @@ pub const Fused_Conv_Clip = struct {
         _ = graph; // Not used in this sequential pattern
 
         // Only start detection from DequantizeLinear nodes
-        if (root_node.op != .conv or root_node.next.items.len != 1 or root_node.next.items[0].op != .clip) {
+        if (root_node.op != .conv) {
             return null;
         }
 
@@ -291,7 +291,16 @@ pub const Fused_Conv_Clip = struct {
 
         try node_list.append(allocator, root_node);
 
+        if (root_node.next.items.len != 1) {
+            node_list.deinit(allocator);
+            return null;
+        }
+
         const pad_node = root_node.next.items[0];
+        if (pad_node.op != .clip) {
+            node_list.deinit(allocator);
+            return null;
+        }
 
         try node_list.append(allocator, pad_node);
 
