@@ -106,126 +106,166 @@ pub const Fused_Conv_Clip = struct {
     }
 
     pub fn write_op(self: Fused_Conv_Clip, writer: anytype) !void {
-        // local name
-        const sanitized_input_name = try utils.getSanitizedName(self.op_Conv.input_X.name);
-        const sanitized_kernel_name = try utils.getSanitizedName(self.op_Conv.input_W.name);
-        const sanitized_output_name = try utils.getSanitizedName(self.op_Clip.output.name);
-        const sanitized_bias_name = if (self.op_Conv.input_B) |b|
-            try utils.getSanitizedName(b.name)
-        else
-            null;
 
-        // use local name cache
-        const tensor_X_string = if (self.op_Conv.input_X.tc == TensorCategory.INITIALIZER)
-            try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_input_name})
-        else
-            try std.fmt.allocPrint(allocator, "@constCast(&tensor_{s})", .{sanitized_input_name});
+        //----create tensor_X_string
+        var tensor_X_string: []u8 = undefined;
         defer allocator.free(tensor_X_string);
 
-        const tensor_W_string = if (self.op_Conv.input_W.tc == TensorCategory.INITIALIZER)
-            try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_kernel_name})
-        else
-            try std.fmt.allocPrint(allocator, "@constCast(&tensor_{s})", .{sanitized_kernel_name});
+        if (self.op_Conv.input_X.tc == TensorCategory.INITIALIZER) {
+            tensor_X_string = try std.mem.concat(allocator, u8, &[_][]const u8{
+                "@constCast(&param_lib.tensor_",
+                try IR_utils.getSanitizedName(self.op_Conv.input_X.name),
+                ")",
+            });
+        } else {
+            tensor_X_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&tensor_", try IR_utils.getSanitizedName(self.op_Conv.input_X.name), ")" });
+        }
+
+        //----create tensor_W_string
+        var tensor_W_string: []u8 = undefined;
         defer allocator.free(tensor_W_string);
+        if (self.op_Conv.input_W.tc == TensorCategory.INITIALIZER) {
+            tensor_W_string = try std.mem.concat(allocator, u8, &[_][]const u8{
+                "@constCast(&param_lib.tensor_",
+                try IR_utils.getSanitizedName(self.op_Conv.input_W.name),
+                ")",
+            });
+        } else {
+            tensor_W_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&tensor_", try IR_utils.getSanitizedName(self.op_Conv.input_W.name), ")" });
+        }
 
-        const bias_string = if (self.op_Conv.input_B) |_|
-            try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_bias_name.?})
-        else
-            try allocator.dupe(u8, "null");
+        //----create optional ?bias string
+        var bias_string: []u8 = undefined;
         defer allocator.free(bias_string);
+        // Bias Tensor B is optional! verify the presence
+        if (self.op_Conv.input_B) |input_B| {
+            const B_name = try IR_utils.getSanitizedName(input_B.name);
+            bias_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&param_lib.tensor_", B_name, ")" });
+        } else {
+            bias_string = try std.mem.concat(allocator, u8, &[_][]const u8{"null"});
+        }
 
-        // casting conditions
-        const target_type = self.op_Clip.output.ty.toString();
-        const need_kernel_cast = !std.mem.eql(u8, self.op_Conv.input_W.ty.toString(), target_type);
-        const need_bias_cast = if (self.op_Conv.input_B) |bias|
-            !std.mem.eql(u8, bias.ty.toString(), target_type)
-        else
-            false;
+        //----create optional min string
+        var min_string: []u8 = undefined;
+        defer allocator.free(min_string);
+        // Tensor Min is optional! verify the presence
+        if (self.op_Clip.min) |min| {
+            const min_name = try IR_utils.getSanitizedName(min.name);
+            min_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&param_lib.tensor_", min_name, ")" });
+        } else {
+            min_string = try std.mem.concat(allocator, u8, &[_][]const u8{"null"});
+        }
 
-        // stride string
+        //----create optional max string
+        var max_string: []u8 = undefined;
+        defer allocator.free(max_string);
+        // Tensor Max is optional! verify the presence
+        if (self.op_Clip.max) |max| {
+            const max_name = try IR_utils.getSanitizedName(max.name);
+            max_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&param_lib.tensor_", max_name, ")" });
+        } else {
+            max_string = try std.mem.concat(allocator, u8, &[_][]const u8{"null"});
+        }
+
+        //?dilation string
+        var dilat_string: []const u8 = "null";
+        if (self.op_Conv.dilations != null) {
+            if (self.op_Conv.dilations.?.len > 0) {
+                dilat_string = try IR_utils.i64SliceToUsizeArrayString(self.op_Conv.dilations.?);
+            } else {
+                dilat_string = "&[_]usize{}";
+            }
+        } // else dilat_string remains "null"
+
+        //strides string
         if (self.op_Conv.strides == null) return error.StrideNotFound;
         const stride_string = try utils.i64SliceToUsizeArrayString(self.op_Conv.strides.?);
 
-        // pads string
-        const pads_string = if (self.op_Conv.pads) |p| blk: {
-            if (p.len > 0) {
-                break :blk try utils.i64SliceToUsizeArrayString(p);
+        // &pads string
+        var pads_string: []const u8 = "null";
+        if (self.op_Conv.pads != null) {
+            if (self.op_Conv.pads.?.len > 0) { // Check if the slice is actually non-empty
+                pads_string = try IR_utils.i64SliceToUsizeArrayString(self.op_Conv.pads.?);
+                // Assuming no allocation needed to be freed, following write_conv
             } else {
-                break :blk "&[_]usize{}";
+                pads_string = "&[_]usize{}"; // Use explicit empty slice literal if input slice is empty
             }
-        } else "null";
+        } // else pads_string remains "null"
 
-        // Dilations string
-        const dilat_string = if (self.op_Conv.dilations) |d| blk: {
-            if (d.len > 0) {
-                break :blk try utils.i64SliceToUsizeArrayString(d);
-            } else {
-                break :blk "&[_]usize{1} ** 2";
-            }
-        } else "null";
+        // Check if we need cast operations for mixed precision
+        const target_type = self.op_Clip.output.ty.toString();
+        const need_kernel_cast = !std.mem.eql(u8, self.op_Conv.input_W.ty.toString(), target_type);
+        const need_bias_cast = if (self.op_Conv.input_B) |bias| !std.mem.eql(u8, bias.ty.toString(), target_type) else false;
 
-        // Clip bounds - RIUSA sanitized_output_name
-        const min_string = if (self.op_Clip.min) |min_tensor|
-            if (min_tensor.tc == TensorCategory.INITIALIZER)
-                try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{try utils.getSanitizedName(min_tensor.name)})
-            else
-                try std.fmt.allocPrint(allocator, "&tensor_{s}", .{try utils.getSanitizedName(min_tensor.name)})
-        else
-            "null";
-        defer if (!std.mem.eql(u8, min_string, "null")) allocator.free(@constCast(min_string));
-
-        const max_string = if (self.op_Clip.max) |max_tensor|
-            if (max_tensor.tc == TensorCategory.INITIALIZER)
-                try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{try utils.getSanitizedName(max_tensor.name)})
-            else
-                try std.fmt.allocPrint(allocator, "&tensor_{s}", .{try utils.getSanitizedName(max_tensor.name)})
-        else
-            "null";
-        defer if (!std.mem.eql(u8, max_string, "null")) allocator.free(@constCast(max_string));
-
-        // Handle casting
-        var final_kernel_string = tensor_W_string;
-        var final_bias_string = bias_string;
+        //Handle casting
+        var final_kernel_string: []const u8 = undefined;
+        var final_bias_string: []const u8 = undefined;
         var need_free_kernel = false;
         var need_free_bias = false;
         defer if (need_free_kernel) allocator.free(@constCast(final_kernel_string));
         defer if (need_free_bias) allocator.free(@constCast(final_bias_string));
 
+        //--KERNEL CAST--
         if (need_kernel_cast) {
-            final_kernel_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_W_casted_{s}", .{ sanitized_kernel_name, sanitized_output_name } // RIUSA!
-            );
-            need_free_kernel = true;
-
+            // Generate cast for kernel
+            const kernel_name = try IR_utils.getSanitizedName(self.op_Conv.input_W.name);
             _ = try writer.print(
-                \\    var tensor_{s}_W_casted_{s} = Tensor({s}).fromShape(&allocator, &param_lib.tensor_{s}.shape) catch return -2;
-                \\    tensMath.cast_lean({s}, &param_lib.tensor_{s}, &tensor_{s}_W_casted_{s}) catch return -1;
+                \\
+                \\    // Cast kernel from {s} to {s}
+                \\    var tensor_{s}_casted = Tensor({s}).fromShape(&allocator, @constCast(param_lib.tensor_{s}.shape)) catch return -2;
+                \\    defer tensor_{s}_casted.deinit();
+                \\    tensMath.cast_lean({s}, {s}, @constCast(&param_lib.tensor_{s}), &tensor_{s}_casted, zant.onnx.DataType.FLOAT) catch return -1;
                 \\
             , .{
-                sanitized_kernel_name, sanitized_output_name,              target_type,
-                sanitized_kernel_name, self.op_Conv.input_W.ty.toString(), sanitized_kernel_name,
-                sanitized_kernel_name, sanitized_output_name,
+                self.op_Conv.input_W.ty.toString(),
+                target_type,
+                kernel_name,
+                target_type,
+                kernel_name,
+                kernel_name,
+                self.op_Conv.input_W.ty.toString(),
+                target_type,
+                kernel_name,
+                kernel_name,
             });
+            final_kernel_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&tensor_", kernel_name, "_casted)" });
+            need_free_kernel = true;
+        } else {
+            final_kernel_string = tensor_W_string;
         }
 
+        //BIAS CAST
         if (need_bias_cast and self.op_Conv.input_B != null) {
-            final_bias_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_B_casted_{s}", .{ sanitized_bias_name.?, sanitized_output_name } // RIUSA!
-            );
-            need_free_bias = true;
-
+            // Generate cast for bias
+            const bias_name = try IR_utils.getSanitizedName(self.op_Conv.input_B.?.name);
             _ = try writer.print(
-                \\    var tensor_{s}_B_casted_{s} = Tensor({s}).fromShape(&allocator, &param_lib.tensor_{s}.shape) catch return -2;
-                \\    tensMath.cast_lean({s}, &param_lib.tensor_{s}, &tensor_{s}_B_casted_{s}) catch return -1;
+                \\
+                \\    // Cast bias from {s} to {s}
+                \\    var tensor_{s}_casted = Tensor({s}).fromShape(&allocator, @constCast(param_lib.tensor_{s}.shape)) catch return -2;
+                \\    defer tensor_{s}_casted.deinit();
+                \\    tensMath.cast_lean({s}, {s}, @constCast(&param_lib.tensor_{s}), &tensor_{s}_casted, zant.onnx.DataType.FLOAT) catch return -1;
                 \\
             , .{
-                sanitized_bias_name.?, sanitized_output_name,                target_type,
-                sanitized_bias_name.?, self.op_Conv.input_B.?.ty.toString(), sanitized_bias_name.?,
-                sanitized_bias_name.?, sanitized_output_name,
+                self.op_Conv.input_B.?.ty.toString(),
+                target_type,
+                bias_name,
+                target_type,
+                bias_name,
+                bias_name,
+                self.op_Conv.input_B.?.ty.toString(),
+                target_type,
+                bias_name,
+                bias_name,
             });
+            final_bias_string = try std.mem.concat(allocator, u8, &[_][]const u8{ "@constCast(&tensor_", bias_name, "_casted)" });
+            need_free_bias = true;
+        } else {
+            final_bias_string = bias_string;
         }
 
         // Generate fused call
         _ = try writer.print(
-            \\    
+            \\
             \\    @setEvalBranchQuota(10000);
             \\    // Fused Conv+Clip operation
             \\    tensMath.conv_clip_lean(
@@ -247,7 +287,7 @@ pub const Fused_Conv_Clip = struct {
             target_type,
             tensor_X_string,
             final_kernel_string,
-            sanitized_output_name,
+            try IR_utils.getSanitizedName(self.op_Clip.output.name),
             final_bias_string,
             stride_string,
             pads_string,
@@ -258,6 +298,160 @@ pub const Fused_Conv_Clip = struct {
             max_string,
         });
     }
+
+    // pub fn write_op(self: Fused_Conv_Clip, writer: anytype) !void {
+    //     // local name
+    //     const sanitized_input_name = try utils.getSanitizedName(self.op_Conv.input_X.name);
+    //     const sanitized_kernel_name = try utils.getSanitizedName(self.op_Conv.input_W.name);
+    //     const sanitized_output_name = try utils.getSanitizedName(self.op_Clip.output.name);
+    //     const sanitized_bias_name = if (self.op_Conv.input_B) |b|
+    //         try utils.getSanitizedName(b.name)
+    //     else
+    //         null;
+
+    //     // use local name cache
+    //     const tensor_X_string = if (self.op_Conv.input_X.tc == TensorCategory.INITIALIZER)
+    //         try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_input_name})
+    //     else
+    //         try std.fmt.allocPrint(allocator, "@constCast(&tensor_{s})", .{sanitized_input_name});
+    //     defer allocator.free(tensor_X_string);
+
+    //     const tensor_W_string = if (self.op_Conv.input_W.tc == TensorCategory.INITIALIZER)
+    //         try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_kernel_name})
+    //     else
+    //         try std.fmt.allocPrint(allocator, "@constCast(&tensor_{s})", .{sanitized_kernel_name});
+    //     defer allocator.free(tensor_W_string);
+
+    //     const bias_string = if (self.op_Conv.input_B) |_|
+    //         try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_bias_name.?})
+    //     else
+    //         try allocator.dupe(u8, "null");
+    //     defer allocator.free(bias_string);
+
+    //     // casting conditions
+    //     const target_type = self.op_Clip.output.ty.toString();
+    //     const need_kernel_cast = !std.mem.eql(u8, self.op_Conv.input_W.ty.toString(), target_type);
+    //     const need_bias_cast = if (self.op_Conv.input_B) |bias|
+    //         !std.mem.eql(u8, bias.ty.toString(), target_type)
+    //     else
+    //         false;
+
+    //     // stride string
+    //     if (self.op_Conv.strides == null) return error.StrideNotFound;
+    //     const stride_string = try utils.i64SliceToUsizeArrayString(self.op_Conv.strides.?);
+
+    //     // pads string
+    //     const pads_string = if (self.op_Conv.pads) |p| blk: {
+    //         if (p.len > 0) {
+    //             break :blk try utils.i64SliceToUsizeArrayString(p);
+    //         } else {
+    //             break :blk "&[_]usize{}";
+    //         }
+    //     } else "null";
+
+    //     // Dilations string
+    //     const dilat_string = if (self.op_Conv.dilations) |d| blk: {
+    //         if (d.len > 0) {
+    //             break :blk try utils.i64SliceToUsizeArrayString(d);
+    //         } else {
+    //             break :blk "&[_]usize{1} ** 2";
+    //         }
+    //     } else "null";
+
+    //     // Clip bounds - RIUSA sanitized_output_name
+    //     const min_string = if (self.op_Clip.min) |min_tensor|
+    //         if (min_tensor.tc == TensorCategory.INITIALIZER)
+    //             try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{try utils.getSanitizedName(min_tensor.name)})
+    //         else
+    //             try std.fmt.allocPrint(allocator, "&tensor_{s}", .{try utils.getSanitizedName(min_tensor.name)})
+    //     else
+    //         "null";
+    //     defer if (!std.mem.eql(u8, min_string, "null")) allocator.free(@constCast(min_string));
+
+    //     const max_string = if (self.op_Clip.max) |max_tensor|
+    //         if (max_tensor.tc == TensorCategory.INITIALIZER)
+    //             try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{try utils.getSanitizedName(max_tensor.name)})
+    //         else
+    //             try std.fmt.allocPrint(allocator, "&tensor_{s}", .{try utils.getSanitizedName(max_tensor.name)})
+    //     else
+    //         "null";
+    //     defer if (!std.mem.eql(u8, max_string, "null")) allocator.free(@constCast(max_string));
+
+    //     // Handle casting
+    //     var final_kernel_string = tensor_W_string;
+    //     var final_bias_string = bias_string;
+    //     var need_free_kernel = false;
+    //     var need_free_bias = false;
+    //     defer if (need_free_kernel) allocator.free(@constCast(final_kernel_string));
+    //     defer if (need_free_bias) allocator.free(@constCast(final_bias_string));
+
+    //     if (need_kernel_cast) {
+    //         final_kernel_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_W_casted_{s}", .{ sanitized_kernel_name, sanitized_output_name } // RIUSA!
+    //         );
+    //         need_free_kernel = true;
+
+    //         _ = try writer.print(
+    //             \\    var tensor_{s}_W_casted_{s} = Tensor({s}).fromShape(&allocator, &param_lib.tensor_{s}.shape) catch return -2;
+    //             \\    tensMath.cast_lean({s}, &param_lib.tensor_{s}, &tensor_{s}_W_casted_{s}) catch return -1;
+    //             \\
+    //         , .{
+    //             sanitized_kernel_name, sanitized_output_name,              target_type,
+    //             sanitized_kernel_name, self.op_Conv.input_W.ty.toString(), sanitized_kernel_name,
+    //             sanitized_kernel_name, sanitized_output_name,
+    //         });
+    //     }
+
+    //     if (need_bias_cast and self.op_Conv.input_B != null) {
+    //         final_bias_string = try std.fmt.allocPrint(allocator, "&tensor_{s}_B_casted_{s}", .{ sanitized_bias_name.?, sanitized_output_name } // RIUSA!
+    //         );
+    //         need_free_bias = true;
+
+    //         _ = try writer.print(
+    //             \\    var tensor_{s}_B_casted_{s} = Tensor({s}).fromShape(&allocator, &param_lib.tensor_{s}.shape) catch return -2;
+    //             \\    tensMath.cast_lean({s}, &param_lib.tensor_{s}, &tensor_{s}_B_casted_{s}) catch return -1;
+    //             \\
+    //         , .{
+    //             sanitized_bias_name.?, sanitized_output_name,                target_type,
+    //             sanitized_bias_name.?, self.op_Conv.input_B.?.ty.toString(), sanitized_bias_name.?,
+    //             sanitized_bias_name.?, sanitized_output_name,
+    //         });
+    //     }
+
+    //     // Generate fused call
+    //     _ = try writer.print(
+    //         \\
+    //         \\    @setEvalBranchQuota(10000);
+    //         \\    // Fused Conv+Clip operation
+    //         \\    tensMath.conv_clip_lean(
+    //         \\        {s},
+    //         \\        {s},
+    //         \\        {s},
+    //         \\        &tensor_{s},
+    //         \\        {s},
+    //         \\        {s},
+    //         \\        {s},
+    //         \\        {s},
+    //         \\        {},
+    //         \\        "{s}",
+    //         \\        {s},
+    //         \\        {s},
+    //         \\    ) catch return -1;
+    //         \\
+    //     , .{
+    //         target_type,
+    //         tensor_X_string,
+    //         final_kernel_string,
+    //         sanitized_output_name,
+    //         final_bias_string,
+    //         stride_string,
+    //         pads_string,
+    //         dilat_string,
+    //         self.op_Conv.group,
+    //         self.op_Conv.auto_pad,
+    //         min_string,
+    //         max_string,
+    //     });
+    // }
 
     //DONE
     pub fn compute_output_shape(self: Fused_Conv_Clip) []usize {
