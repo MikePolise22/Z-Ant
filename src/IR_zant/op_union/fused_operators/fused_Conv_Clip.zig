@@ -116,7 +116,7 @@ pub const Fused_Conv_Clip = struct {
         else
             null;
 
-        // ===== RIUSA i nomi invece di ricalcolarli =====
+        // use local name cache
         const tensor_X_string = if (self.op_Conv.input_X.tc == TensorCategory.INITIALIZER)
             try std.fmt.allocPrint(allocator, "@constCast(&param_lib.tensor_{s})", .{sanitized_input_name})
         else
@@ -135,7 +135,7 @@ pub const Fused_Conv_Clip = struct {
             try allocator.dupe(u8, "null");
         defer allocator.free(bias_string);
 
-        // ===== Pre-calcola le condizioni di casting =====
+        // casting conditions
         const target_type = self.op_Clip.output.ty.toString();
         const need_kernel_cast = !std.mem.eql(u8, self.op_Conv.input_W.ty.toString(), target_type);
         const need_bias_cast = if (self.op_Conv.input_B) |bias|
@@ -143,11 +143,11 @@ pub const Fused_Conv_Clip = struct {
         else
             false;
 
-        // Stride string
+        // stride string
         if (self.op_Conv.strides == null) return error.StrideNotFound;
         const stride_string = try utils.i64SliceToUsizeArrayString(self.op_Conv.strides.?);
 
-        // Pads string
+        // pads string
         const pads_string = if (self.op_Conv.pads) |p| blk: {
             if (p.len > 0) {
                 break :blk try utils.i64SliceToUsizeArrayString(p);
@@ -184,7 +184,7 @@ pub const Fused_Conv_Clip = struct {
             "null";
         defer if (!std.mem.eql(u8, max_string, "null")) allocator.free(@constCast(max_string));
 
-        // Handle casting - RIUSA sanitized_kernel_name invece di ricalcolarlo
+        // Handle casting
         var final_kernel_string = tensor_W_string;
         var final_bias_string = bias_string;
         var need_free_kernel = false;
@@ -248,7 +248,7 @@ pub const Fused_Conv_Clip = struct {
             target_type,
             tensor_X_string,
             final_kernel_string,
-            sanitized_output_name, // RIUSA!
+            sanitized_output_name,
             final_bias_string,
             stride_string,
             pads_string,
@@ -273,13 +273,39 @@ pub const Fused_Conv_Clip = struct {
     //DONE
     //if there are problems check the conv.sobtitute_tensors, it changes also the output that here is not considered
     pub fn sobstitute_tensors(self: *Fused_Conv_Clip, old_tensor: *TensorZant, new_tensor: *TensorZant) !void {
-        //Try to substitute Conv tensor
-        self.op_Conv.sobstitute_tensors(old_tensor, new_tensor) catch {
-            //If not found in Conv, try among Clip tensors
-            self.op_Clip.sobstitute_tensors(old_tensor, new_tensor) catch {
-                return error.OldTensorNotFoundInSubstitution;
-            };
-        };
+        // Accesso diretto invece di try/catch nidificati
+        if (self.op_Conv.input_X == old_tensor) {
+            self.op_Conv.input_X = new_tensor;
+            return;
+        }
+        if (self.op_Conv.input_W == old_tensor) {
+            self.op_Conv.input_W = new_tensor;
+            return;
+        }
+        if (self.op_Conv.input_B) |b| {
+            if (b == old_tensor) {
+                self.op_Conv.input_B = new_tensor;
+                return;
+            }
+        }
+        if (self.op_Clip.min) |m| {
+            if (m == old_tensor) {
+                self.op_Clip.min = new_tensor;
+                return;
+            }
+        }
+        if (self.op_Clip.max) |M| {
+            if (M == old_tensor) {
+                self.op_Clip.max = new_tensor;
+                return;
+            }
+        }
+        if (self.op_Clip.output == old_tensor) {
+            self.op_Clip.output = new_tensor;
+            return;
+        }
+
+        return error.OldTensorNotFoundInSubstitution;
     }
 
     // --- Fusion --
