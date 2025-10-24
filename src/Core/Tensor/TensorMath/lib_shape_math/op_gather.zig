@@ -21,7 +21,8 @@ pub fn gather(comptime T: anytype, data: *Tensor(T), indices: *Tensor(usize), se
 
     // Validate that the axis is within the tensor's dimensions
     const number_dimensions: isize = @intCast(data.shape.len);
-    std.debug.print("left bound = {}, right_bound = {}\n", .{ -1 * number_dimensions, number_dimensions });
+    std.debug.print("left bound = {}, right: {}\n", .{ -1 * number_dimensions, -number_dimensions });
+    //std.debug.print("left bound = {}, right_bound = {}\n", .{ -1 * number_dimensions, number_dimensions });
     if (selected_axis >= number_dimensions or selected_axis < -1 * number_dimensions) {
         std.debug.print("axis = {}, rank = {}\n", .{ selected_axis, number_dimensions });
         return TensorError.InvalidAxis;
