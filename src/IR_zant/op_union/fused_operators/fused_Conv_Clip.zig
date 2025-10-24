@@ -72,20 +72,35 @@ pub const Fused_Conv_Clip = struct {
     //DONE
     //TODO controlla allocazioni e defer
     pub fn get_input_tensors(self: Fused_Conv_Clip) ![]*TensorZant {
-        var inputs: std.ArrayList(*TensorZant) = .empty;
-        defer inputs.deinit(allocator);
+        // Allocazione diretta - no ArrayList overhead
+        const count = 2 + // X, W sempre presenti
+            (if (self.op_Conv.input_B != null) @as(usize, 1) else 0) +
+            (if (self.op_Clip.min != null) @as(usize, 1) else 0) +
+            (if (self.op_Clip.max != null) @as(usize, 1) else 0);
 
-        // conv inputs X, W, (B if exists)
-        const conv_inputs = try self.op_Conv.get_input_tensors();
-        for (conv_inputs) |t| {
-            try inputs.append(allocator, t);
+        var inputs = try allocator.alloc(*TensorZant, count);
+        errdefer allocator.free(inputs);
+        var idx: usize = 0;
+
+        // Accesso DIRETTO - no function call
+        inputs[idx] = self.op_Conv.input_X;
+        idx += 1;
+        inputs[idx] = self.op_Conv.input_W;
+        idx += 1;
+        if (self.op_Conv.input_B) |b| {
+            inputs[idx] = b;
+            idx += 1;
+        }
+        if (self.op_Clip.min) |m| {
+            inputs[idx] = m;
+            idx += 1;
+        }
+        if (self.op_Clip.max) |M| {
+            inputs[idx] = M;
+            idx += 1;
         }
 
-        // clip parameters min, max (if exist)
-        if (self.op_Clip.min) |m| try inputs.append(allocator, m);
-        if (self.op_Clip.max) |M| try inputs.append(allocator, M);
-
-        return inputs.toOwnedSlice(allocator);
+        return inputs;
     }
 
     //DONE
