@@ -343,6 +343,7 @@ pub const Fused_Conv_Clip = struct {
     }
 
     /// Pattern fusion function
+    /// TODO controlla la copia degli items, molto lenta
     pub fn fn_pattern_fusion(graph: *GraphZant, node_list: std.ArrayList(*NodeZant)) anyerror!NodeZant {
         _ = graph; // Not used in this sequential pattern
 
@@ -354,16 +355,16 @@ pub const Fused_Conv_Clip = struct {
         const last_node = node_list.items[1]; // Clip
 
         // Clone the next list instead of direct reference
-        var cloned_next: std.ArrayList(*NodeZant) = .empty;
-        for (last_node.next.items) |next_node| {
-            try cloned_next.append(allocator, next_node);
-        }
+        // var cloned_next: std.ArrayList(*NodeZant) = .empty;
+        // for (last_node.next.items) |next_node| {
+        //     try cloned_next.append(allocator, next_node);
+        // }
 
         return NodeZant{
             .name = try NodeZant_lib.getFusedOpsName(node_list),
             .op_type = try NodeZant_lib.getFusedOpsType(node_list),
             .op = Op_union{ .fused_Conv_Clip = try init_fused_op(node_list) },
-            .next = cloned_next,
+            .next = last_node.next,
             .nodeProto = null,
             .ready = false,
             .is_fused = true,
