@@ -111,8 +111,8 @@ pub fn codegnenerateFromGraphZant(model_name: []const u8, generated_path: []cons
         const json_str = try json_writer.toOwnedSlice();
         defer allocator.free(json_str);
 
-        std.debug.print("\n{s}\n", .{json_str});
-        std.debug.print("\n", .{});
+        // std.debug.print("\n{s}\n", .{json_str}); // DEBUG
+        // std.debug.print("\n", .{});
     }
 
     try codegnenerateFromLinearizedGraph(

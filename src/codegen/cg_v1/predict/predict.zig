@@ -232,7 +232,9 @@ fn write_linkersResetMethod(writer: *std.Io.Writer, codegen_parameters: cg_v1.Co
                 if (!emitted_buffers.isSet(backing_buffer.id)) {
                     _ = try writer.print(
                         \\
-                        \\    @memset(backing_buffer_{d}[0..], 0);
+                        \\    for (backing_buffer_{d}[0..]) |*el| {{
+                        \\      el.* = 0;
+                        \\    }}
                     , .{backing_buffer.id});
                     emitted_buffers.set(backing_buffer.id);
                 }

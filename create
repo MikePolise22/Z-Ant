@@ -210,6 +210,7 @@ sleep 2s
 # Step 4: Test the generated library
 print_step "Testing generated library..."
 
+print_step " zig build lib-test $TEST_ARGS "
 zig build lib-test $TEST_ARGS
 
 # ----------------------------------------------------------------------------------------------------
@@ -231,6 +232,7 @@ if [ -n "$OPTIMIZE" ]; then
     BUILD_ARGS="$BUILD_ARGS -Doptimize=${OPTIMIZE}"
 fi
 
+print_step " zig build lib-test $TEST_ARGS "
 zig build lib $BUILD_ARGS 
 
 print_success "Static library build completed"

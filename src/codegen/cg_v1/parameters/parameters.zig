@@ -54,14 +54,6 @@ pub inline fn write_parameters(writer: *std.Io.Writer) !void {
     //importing the libraries
     try write_libraries_parameters(writer);
 
-    // Add XIP verification imports if enabled
-    if (global_xip_config.enabled) {
-        try writer.print(
-            \\const xip = @import("../utils/xip_support.zig");
-            \\
-        , .{});
-    }
-
     try writer.print(
         \\
         \\
@@ -70,7 +62,6 @@ pub inline fn write_parameters(writer: *std.Io.Writer) !void {
         \\ // ---------------------------------------------------
     , .{});
 
-    const initializers = try IR_utils.getInitializers(tensorZantMap);
     try write_initilizers(writer);
 
     try writer.print(
@@ -82,13 +73,6 @@ pub inline fn write_parameters(writer: *std.Io.Writer) !void {
     , .{});
 
     try write_constantTensors(writer);
-
-    // Generate missing zero_point tensors for quantized operations
-
-    // Add XIP validation function if enabled
-    if (global_xip_config.enabled and global_xip_config.validate_pointers) {
-        try writeXIPValidationFunction(writer, initializers);
-    }
 }
 
 fn write_initilizers(writer: *std.Io.Writer) !void {
@@ -157,33 +141,6 @@ fn write_constantTensors(writer: *std.Io.Writer) !void {
             \\pub const tensor_{s} = Tensor({s}).fromConstBuffer(&allocator, &array_{s}, &shape_tensor_{s});
         , .{ name, constant_tensors.ty.toString(), name, name });
     }
-}
-
-/// Write XIP validation function for all weight arrays
-fn writeXIPValidationFunction(writer: *std.Io.Writer, initializers: []TensorZant) !void {
-    try writer.print(
-        \\
-        \\
-        \\/// Validate all weight arrays are properly located in XIP flash
-        \\pub fn validateXIPWeights() !void {{
-        \\    try xip.verifyXIPConfiguration();
-        \\
-    , .{});
-
-    for (initializers) |*tensor| {
-        const name = try tensor.getNameSanitized();
-
-        try writer.print(
-            \\    try xip.validateWeightPointer({s}, @ptrCast(&array_{s}));
-            \\
-        , .{ tensor.ty.toString(), name });
-    }
-
-    try writer.print(
-        \\    std.log.info("All XIP weight validations passed successfully");
-        \\}}
-        \\
-    , .{});
 }
 
 /// Writes the required library imports to the generated Zig file for input tensor.

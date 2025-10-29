@@ -11,7 +11,7 @@
 
 
 # Array of models to profile
-models=( "coco80_q" ) # "coco80_q" "mobilenet_v2" "beer" "new2" "darknet_s" "fomo8" "mnist-8"
+models=( "mnist-8" ) # "mobilenet_v2" "beer" "fomo8" "coco80_q"
 
 # Array of optimization modes to profile
 optimize_modes=( "ReleaseFast" "ReleaseSmall" )
@@ -96,6 +96,10 @@ profile_model_optimization() {
     local model="$1"
     local optimize_mode="$2"
     local report_file="$3"
+    local allocation_strategy="$4"
+
+    cg_file="callgrind.out.${model}.${optimize_mode}.$$"
+    ms_file="massif.out.${model}.${optimize_mode}.$$"
     
     echo "Profiling $model with $optimize_mode..." | tee -a "$report_file"
     
@@ -107,7 +111,7 @@ profile_model_optimization() {
     
     # Build commands
     echo "Building $optimize_mode version..." >> "$report_file"
-    zig build lib-gen -Dmodel="$model" -Ddo_export -Doptimize="$optimize_mode" 
+    zig build lib-gen -Dmodel="$model" -Ddo_export -Doptimize="$optimize_mode" "$allocation_strategy"
     zig build build-main -Dmodel="$model" -Doptimize="$optimize_mode" 
     
     # Check if executable was created
@@ -127,23 +131,24 @@ profile_model_optimization() {
     
     # Run Valgrind Memcheck
     echo "Running Valgrind Memcheck for $optimize_mode..." >> "$report_file"
+
+    ./zig-out/bin/main_profiling_target >> "$report_file" 2>&1
+
     valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes \
              --log-file=valgrind_memcheck.log \
-             ./zig-out/bin/main_profiling_target 2>&1
+             ./zig-out/bin/main_profiling_target >> "$report_file" 2>&1
     
     extract_memcheck_info "$report_file"
     
     # Run Valgrind Callgrind
     echo "Running Valgrind Callgrind for $optimize_mode..." >> "$report_file"
-    valgrind --tool=callgrind --callgrind-out-file=callgrind.out.%p \
-             ./zig-out/bin/main_profiling_target > /dev/null 2>&1
+    valgrind --tool=callgrind --callgrind-out-file="$cg_file" ./zig-out/bin/main_profiling_target >/dev/null 2>&1
     
     extract_callgrind_info "$report_file"
     
     # Run Valgrind Massif
     echo "Running Valgrind Massif for $optimize_mode..." >> "$report_file"
-    valgrind --tool=massif --time-unit=ms --massif-out-file=massif.out.%p \
-             ./zig-out/bin/main_profiling_target > /dev/null 2>&1
+    valgrind --tool=massif --time-unit=ms --massif-out-file="$ms_file" ./zig-out/bin/main_profiling_target >/dev/null 2>&1
     
     extract_massif_info "$report_file"
     
@@ -197,10 +202,10 @@ create_performance_comparison() {
     echo "" >> "$report_file"
 }
 
-# Function to profile a model (all optimization modes in one file)
-profile_model() {
+# Function to profile a model with static memory allocation 
+profile_model_static() {
     local model="$1"
-    local output_dir="profiling/${model}"
+    local output_dir="profiling/${model}/static"
     
     echo "Profiling $model with all optimization modes..."
     
@@ -222,7 +227,7 @@ profile_model() {
     
     # Profile each optimization mode
     for optimize_mode in "${optimize_modes[@]}"; do
-        profile_model_optimization "$model" "$optimize_mode" "$report_file"
+        profile_model_optimization "$model" "$optimize_mode" "$report_file" "-Ddynamic=false -Dstatic_planning=true -Duse_tensor_pool=true"
         
         # Add separator between different optimization modes
         echo "" >> "$report_file"
@@ -232,6 +237,45 @@ profile_model() {
     
     # Add performance comparison section
     create_performance_comparison "$model" "$report_file"
+    
+    echo "Complete profiling finished for $model. Results saved in $report_file"
+}
+
+# Function to profile a model with dynamic memory allocation 
+profile_model_dynamic() {
+    local model="$1"
+    local output_dir="profiling/${model}/dynamic"
+    
+    echo "Profiling $model with all optimization modes..."
+    
+    # Create output directory
+    mkdir -p "$output_dir"
+    
+    # Single output file for this model with all optimization modes
+    local report_file="$output_dir/${model}_complete_profiling_report.txt"
+    
+    # Clear previous report
+    > "$report_file"
+    
+    echo "=====================================" >> "$report_file"
+    echo "COMPLETE PROFILING REPORT: $model" >> "$report_file"
+    echo "Date: $(date)" >> "$report_file"
+    echo "Optimization modes: ${optimize_modes[*]}" >> "$report_file"
+    echo "=====================================" >> "$report_file"
+    echo "" >> "$report_file"
+    
+    # Profile each optimization mode
+    for optimize_mode in "${optimize_modes[@]}"; do
+        profile_model_optimization "$model" "$optimize_mode" "$report_file" "-Ddynamic=true"
+        
+        # Add separator between different optimization modes
+        echo "" >> "$report_file"
+        echo "================================================" >> "$report_file"
+        echo "" >> "$report_file"
+    done
+    
+    # Add performance comparison section
+    create_performance_comparison "$model" "$report_file" 
     
     echo "Complete profiling finished for $model. Results saved in $report_file"
 }
@@ -247,7 +291,8 @@ for model in "${models[@]}"; do
     echo "=================================="
     
     # Profile model with all optimization modes
-    profile_model "$model"
+    profile_model_dynamic "$model"
+    profile_model_static "$model"
     
 done
 

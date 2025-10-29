@@ -76,23 +76,9 @@ pub fn setXIPConfig(config: XIPConfig) void {
 pub fn write_parameters(writer: Writer) !void {
     try writer.print(TensorConfig.header, .{});
 
-    // Add XIP verification imports if enabled
-    if (global_xip_config.enabled) {
-        try writer.print(
-            \\
-            \\const xip = @import("../utils/xip_support.zig");
-            \\
-        , .{});
-    }
-
     const initializers = try IR_graph_utils.getInitializers(&TensorLib.tensorMap);
     for (initializers) |*tensor| {
         try writeTensorInitializer(writer, tensor);
-    }
-
-    // Add XIP validation function if enabled
-    if (global_xip_config.enabled and global_xip_config.validate_pointers) {
-        try writeXIPValidationFunction(writer, initializers);
     }
 }
 
@@ -140,34 +126,6 @@ fn writeTensorData(writer: Writer, tensor: *TensorZant, name: []const u8) !void 
     }
 
     try writer.print("}} ;", .{});
-}
-
-/// Write XIP validation function for all weight arrays
-fn writeXIPValidationFunction(writer: Writer, initializers: []TensorZant) !void {
-    try writer.print(
-        \\
-        \\
-        \\/// Validate all weight arrays are properly located in XIP flash
-        \\pub fn validateXIPWeights() !void {{
-        \\    try xip.verifyXIPConfiguration();
-        \\
-    , .{});
-
-    for (initializers) |*tensor| {
-        const name = try utils.getSanitizedName(tensor.name);
-        defer allocator.free(name);
-
-        try writer.print(
-            \\    try xip.validateWeightPointer({s}, @ptrCast(&array_{s}));
-            \\
-        , .{ tensor.ty.toString(), name });
-    }
-
-    try writer.print(
-        \\    std.log.info("All XIP weight validations passed successfully");
-        \\}}
-        \\
-    , .{});
 }
 
 /// Calculates the total size of a tensor from its shape.

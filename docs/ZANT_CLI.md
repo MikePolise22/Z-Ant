@@ -179,32 +179,23 @@ zig build lib -Dtarget=aarch64-macos -Doptimize=ReleaseSafe
 ### 1. MOST IMPORTANT - Generate and Test a Model 
 ```bash
 
-./zant input_setter --model my_model --shape 1,3,224,224
+./zant input_setter --model my_model --shape 1,3,224,224 #use https://netron.app/ to see the input shape
 # or, if the model input is already well defined you can run this:
 ./zant shape_thief --model my_mode #shape_thief is in Beta version
 
 # Generate test data
 ./zant user_tests_gen --model my_model [ --normalize ]
 
-# --- GENERATING THE Single Node lib and test it ---
-#For a N nodes model it creates N onnx models, one for each node with respective tests.
-./zant onnx_extract --model my_model
-
-#generate libs for extracted nodes
-zig build extractor-gen -Dmodel="my_model"
-
-#test extracted nodes
-zig build extractor-test -Dmodel="my_model" 
-
 # --- GENERATING THE LIBRARY and TESTS ---
 # Generate code for a specific model
-zig build lib-gen -Dmodel="my_model" -Denable_user_tests [ -Dxip=true -Dfuse -Ddo_export -Dlog -Dcomm ... ]
+zig build lib-gen -Dmodel="my_model" -Denable_user_tests [ -Ddo_export -Dxip=true -Dfuse -Dlog -Dcomm ... ]
 
 # Test the generated code
 zig build lib-test -Dmodel="my_model" -Denable_user_tests [ -Dfuse -Ddo_export -Dlog -Dcomm ... ]
 
 # Build the static library
 zig build lib -Dmodel="my_model" [-Doptimize= [ ReleaseSmall, ReleaseFast ] -Dtarget=... -Dcpu=...]
+
 ```
 
 ### 2. Test Single Operations
@@ -218,6 +209,19 @@ zig build op-codegen-gen -Dop="Add"
 
 # Test the generated operations
 zig build op-codegen-test -Dop="Add"
+```
+
+### 2. Test individual nodes in a graph  
+```bash
+# --- GENERATING THE Single Node lib and test it ---
+#For a N nodes model it creates N onnx models, one for each node with respective tests.
+./zant onnx_extract --model my_model
+
+#generate libs for extracted nodes
+zig build extractor-gen -Dmodel="my_model"
+
+#test extracted nodes
+zig build extractor-test -Dmodel="my_model" 
 ```
 
 ### 3. Prepare ONNX Models
